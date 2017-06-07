@@ -36,7 +36,7 @@
 #include "ardour/processor.h"
 #include "ardour/readonly_control.h"
 #include "ardour/sidechain.h"
-#include "ardour/automation_control.h"
+#include "ardour/slavable_automation_control.h"
 
 class XMLNode;
 
@@ -187,7 +187,7 @@ class LIBARDOUR_API PluginInsert : public Processor
 	bool load_preset (Plugin::PresetRecord);
 
 	/** A control that manipulates a plugin parameter (control port). */
-	struct PluginControl : public AutomationControl
+	struct PluginControl : public SlavableAutomationControl
 	{
 		PluginControl (PluginInsert*                     p,
 		               const Evoral::Parameter&          param,
@@ -197,6 +197,7 @@ class LIBARDOUR_API PluginInsert : public Processor
 		double get_value (void) const;
 		void catch_up_with_external_value (double val);
 		XMLNode& get_state();
+		bool handle_master_change (boost::shared_ptr<AutomationControl>);
 
 	private:
 		PluginInsert* _plugin;
@@ -204,7 +205,7 @@ class LIBARDOUR_API PluginInsert : public Processor
 	};
 
 	/** A control that manipulates a plugin property (message). */
-	struct PluginPropertyControl : public AutomationControl
+	struct PluginPropertyControl : public SlavableAutomationControl
 	{
 		PluginPropertyControl (PluginInsert*                     p,
 		                       const Evoral::Parameter&          param,

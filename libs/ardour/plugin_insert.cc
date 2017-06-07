@@ -474,7 +474,7 @@ PluginInsert::create_automatable_parameters ()
 			can_automate (param);
 		}
 		boost::shared_ptr<AutomationList> list(new AutomationList(param, desc));
-		boost::shared_ptr<AutomationControl> c (new PluginControl(this, param, desc, list));
+		boost::shared_ptr<PluginControl> c (new PluginControl(this, param, desc, list));
 		if (!automatable) {
 			c->set_flags (Controllable::Flag ((int)c->flags() | Controllable::NotAutomatable));
 		}
@@ -814,6 +814,7 @@ PluginInsert::connect_and_run (BufferSet& bufs, framepos_t start, framepos_t end
 
 		for (Controls::iterator li = controls().begin(); li != controls().end(); ++li, ++n) {
 
+			// TODO include ctrl-master value
 			boost::shared_ptr<AutomationControl> c
 				= boost::dynamic_pointer_cast<AutomationControl>(li->second);
 
@@ -2851,7 +2852,7 @@ PluginInsert::PluginControl::PluginControl (PluginInsert*                     p,
                                             const Evoral::Parameter&          param,
                                             const ParameterDescriptor&        desc,
                                             boost::shared_ptr<AutomationList> list)
-	: AutomationControl (p->session(), param, desc, list, p->describe_parameter(param))
+	: SlavableAutomationControl (p->session(), param, desc, list, p->describe_parameter(param))
 	, _plugin (p)
 {
 	if (alist()) {
@@ -2868,6 +2869,8 @@ void
 PluginInsert::PluginControl::actually_set_value (double user_val, PBD::Controllable::GroupControlDisposition group_override)
 {
 	/* FIXME: probably should be taking out some lock here.. */
+	//printf("PluginInsert::PluginControl::actually_set_value %f %f\n", user_val, get_masters_value ());
+	//user_val += get_masters_value (); // TODO normalize
 
 	for (Plugins::iterator i = _plugin->_plugins.begin(); i != _plugin->_plugins.end(); ++i) {
 		(*i)->set_parameter (_list->parameter().id(), user_val);
@@ -2878,6 +2881,8 @@ PluginInsert::PluginControl::actually_set_value (double user_val, PBD::Controlla
 		iasp->set_parameter (_list->parameter().id(), user_val);
 	}
 
+	// don't call SlavableAutomationControl::actually_set_value()
+	// user_val is pre-multiplied
 	AutomationControl::actually_set_value (user_val, group_override);
 }
 
@@ -2887,10 +2892,16 @@ PluginInsert::PluginControl::catch_up_with_external_value (double user_val)
 	AutomationControl::actually_set_value (user_val, Controllable::NoGroup);
 }
 
+bool
+PluginInsert::PluginControl::handle_master_change (boost::shared_ptr<AutomationControl> m)
+{
+	return true;
+}
+
 XMLNode&
 PluginInsert::PluginControl::get_state ()
 {
-	XMLNode& node (AutomationControl::get_state());
+	XMLNode& node (SlavableAutomationControl::get_state());
 	node.set_property (X_("parameter"), parameter().id());
 #ifdef LV2_SUPPORT
 	boost::shared_ptr<LV2Plugin> lv2plugin = boost::dynamic_pointer_cast<LV2Plugin> (_plugin->_plugins[0]);
@@ -2912,14 +2923,14 @@ PluginInsert::PluginControl::get_value () const
 		return 0.0;
 	}
 
-	return plugin->get_parameter (_list->parameter().id());
+	return plugin->get_parameter (_list->parameter().id()); //  - get_masters_value ();
 }
 
 PluginInsert::PluginPropertyControl::PluginPropertyControl (PluginInsert*                     p,
                                                             const Evoral::Parameter&          param,
                                                             const ParameterDescriptor&        desc,
                                                             boost::shared_ptr<AutomationList> list)
-	: AutomationControl (p->session(), param, desc, list)
+	: SlavableAutomationControl (p->session(), param, desc, list)
 	, _plugin (p)
 {
 	if (alist()) {
@@ -2952,7 +2963,7 @@ PluginInsert::PluginPropertyControl::actually_set_value (double user_val, Contro
 XMLNode&
 PluginInsert::PluginPropertyControl::get_state ()
 {
-	XMLNode& node (AutomationControl::get_state());
+	XMLNode& node (SlavableAutomationControl::get_state());
 	node.set_property (X_("property"), parameter().id());
 	node.remove_property (X_("value"));
 
